@@ -1,10 +1,22 @@
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 //TODO send bombs
 //TODO production...
 class Player {
+    private static Function<Factory, Integer> countAvailableCyborgs = f -> f.numberOfCyborgs - f.incomingEnemyCount;
+
+    private static Function<Factory, Integer> distanceFrom(Factory sf) {
+        return f -> f.dists.get(sf);
+    }
+
+    private static Function<Factory, Integer> totalNumberOfEnemiesWhenArrivedFrom(Factory sf) {
+        return f -> f.numberOfCyborgs + f.incomingEnemyCount +
+                (f.owner == -1 ? (f.production * (distanceFrom(sf).apply(f))) : 0);
+    }
+
     private static GameMap map;
     private static int bombCount = 2;
 
@@ -41,20 +53,19 @@ class Player {
             }
             map.calculateStatistics();
 
-            Optional<Factory> sourceFactory = map.myFactories().
-                    reduce((f1,f2) -> f1.numberOfCyborgs - f1.incomingEnemyCount > f2.numberOfCyborgs - f2.incomingEnemyCount ? f1 : f2);
+            Optional<Factory> sourceFactory = map.getBestCandidateForSource();
             if (sourceFactory.isPresent()) {
-                int availableCyborgs = sourceFactory.map(f -> f.numberOfCyborgs - f.incomingEnemyCount).get();
+                int availableCyborgs = sourceFactory.map(countAvailableCyborgs).get() - 1;
+
                 Optional<Factory> target = map.unCapturedFactories().
-                        filter(f -> f.numberOfCyborgs + f.incomingEnemyCount +
-                                (f.production * sourceFactory.map(f1 -> f1.dists.get(f)).get()) < availableCyborgs).
+                        filter(f -> totalNumberOfEnemiesWhenArrivedFrom(sourceFactory.get()).apply(f) < availableCyborgs).
                         reduce((f1, f2) -> {
                             //TODO capture enemy first
                             //TODO optimize
                             //TODO dont send repeatedly
                             if (f1.production == f2.production) {
-                                int f1Dist = sourceFactory.map(f -> f.dists.get(f1)).get();
-                                int f2Dist = sourceFactory.map(f -> f.dists.get(f2)).get();
+                                int f1Dist = sourceFactory.map(distanceFrom(f1)).get();
+                                int f2Dist = sourceFactory.map(distanceFrom(f2)).get();
                                 return f1Dist > f2Dist ? f2 : f1;
                             } else return f1.production > f2.production ? f1 : f2;
                         });
@@ -100,25 +111,25 @@ class GameMap {
     //experimental
     Stream<Factory> unCapturedFactories() {
         if (unCapturedProducingCount > 0) {
-            return factoryMap.values().stream().filter(f -> !f.isConquared() && f.production > 0);
+            return factoryMap.values().stream().filter(f -> !f.isConquered() && f.production > 0);
         } else {
-            return factoryMap.values().stream().filter(f -> !f.isConquared());
+            return factoryMap.values().stream().filter(f -> !f.isConquered());
         }
     }
 
-//    Stream<Factory> unCapturedFactories() {
-//        return factoryMap.values().stream().filter(f -> !f.conquared);
-//    }
+    private Stream<Factory> myFactories() {
+        return factoryMap.values().stream().filter(Factory::isConquered);
+    }
 
-    Stream<Factory> myFactories() {
-        return factoryMap.values().stream().filter(Factory::isConquared);
+    Optional<Factory> getBestCandidateForSource() {
+        return myFactories().reduce((f1,f2) -> f1.numberOfCyborgs - f1.incomingEnemyCount > f2.numberOfCyborgs - f2.incomingEnemyCount ? f1 : f2);
     }
 
     void calculateStatistics() {
         unCapturedCount = 0;
         unCapturedProducingCount = 0;
         factoryMap.values().forEach(f -> {
-            if (!f.isConquared()) {
+            if (!f.isConquered()) {
                 unCapturedCount++;
                 if (f.production > 0) {
                     unCapturedProducingCount++;
@@ -155,8 +166,13 @@ class Factory {
     int numberOfCyborgs;
     int incomingEnemyCount = 0;
     int owner;
-    boolean isConquared() {
+    boolean isConquered() {
         return owner == 1;
     };
-    Map<Factory, Integer> dists = new HashMap();
+    Map<Factory, Integer> dists = new HashMap<Factory, Integer>();
+
+    @Override
+    public String toString() {
+        return id + "";
+    }
 }
