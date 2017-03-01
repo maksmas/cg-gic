@@ -6,6 +6,7 @@ import java.util.stream.Stream;
 
 //TODO send bombs
 //TODO production...
+//TODO don't send all available
 class Player {
     private static Function<Factory, Integer> countAvailableCyborgs = f -> f.numberOfCyborgs - f.incomingEnemyCount;
 
@@ -20,13 +21,12 @@ class Player {
 
     private static BinaryOperator<Factory> bestTarget(Factory sourceFactory) {
         return (f1, f2) -> {
-            //TODO capture enemy first
-            //TODO optimize
-
             if (f1.production == f2.production) {
                 int f1Dist = distanceFrom(f1).apply(sourceFactory);
                 int f2Dist = distanceFrom(f2).apply(sourceFactory);
-                return f1Dist > f2Dist ? f2 : f1;
+                if (f1Dist == f2Dist) {
+                    return f1.owner == -1 ? f1 :f2;
+                } else return f1Dist > f2Dist ? f2 : f1;
             } else return f1.production > f2.production ? f1 : f2;
 
         };
@@ -46,8 +46,6 @@ class Player {
             int distance = in.nextInt();
             map.addLink(factory1, factory2, distance);
         }
-
-        //map.printMap();
 
         while (true) {
             map.resetIncoming();
@@ -118,7 +116,11 @@ class GameMap {
     }
 
     void resetIncoming() {
-        factoryMap.values().forEach(f -> f.incomingEnemyCount = 0);
+        factoryMap.values().forEach(f -> {
+                    f.incomingEnemyCount = 0;
+                    f.incomingFriendsCount = 0;
+                }
+        );
     }
 
     Stream<Factory> unCapturedFactories() {
