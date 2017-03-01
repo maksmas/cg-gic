@@ -6,7 +6,7 @@ import java.util.stream.Stream;
 
 //TODO send bombs
 //TODO production...
-//TODO don't send all available
+//TODO multitasking
 class Player {
     private static Function<Factory, Integer> countAvailableCyborgs = f -> f.numberOfCyborgs - f.incomingEnemyCount;
 
@@ -66,31 +66,68 @@ class Player {
             }
             map.calculateStatistics();
 
+            //TODO mb loop thru my factorys
             Optional<Factory> sourceFactory = map.getBestCandidateForSource();
             if (sourceFactory.isPresent()) {
-                int availableCyborgs = sourceFactory.map(countAvailableCyborgs).get() - 1;
+                int availableCyborgs = sourceFactory.map(countAvailableCyborgs).get();
+                Optional<Factory> target = seekTarget(sourceFactory.get(), availableCyborgs);
 
-                Optional<Factory> target = map.unCapturedFactories().
-                        filter(f -> {
-                            int enemies = totalNumberOfEnemiesWithArrivingFrom(sourceFactory.get()).apply(f);
-                            int friends = f.incomingFriendsCount;
-                            return  enemies < availableCyborgs && enemies > friends;
-                        }).reduce(bestTarget(sourceFactory.get()));
                 if (target.isPresent()) {
-                    System.out.println("MOVE " + sourceFactory.get().id + " " + target.get().id + " " + availableCyborgs);
+                    attack(sourceFactory.get(), target.get(), availableCyborgs);
                     continue;
+                } else if (availableCyborgs > 0) {
+                    Optional<Factory> inDangerFactory = findIndangerFactory(sourceFactory.get());
+                    if (inDangerFactory.isPresent()) {
+                        support(sourceFactory.get(), inDangerFactory.get(), availableCyborgs);
+                        continue;
+                    }
                 }
             }
             System.out.println("WAIT");
         }
     }
+
+    private static Optional<Factory> seekTarget(Factory sourceFactory, int availableCyborgs) {
+        return map.unCapturedFactories().
+                filter(f -> {
+                    int enemies = totalNumberOfEnemiesWithArrivingFrom(sourceFactory).apply(f);
+                    int friends = f.incomingFriendsCount;
+                    return  enemies < availableCyborgs && enemies > friends;
+                }).reduce(bestTarget(sourceFactory));
+    }
+
+    private static void attack(Factory source, Factory target, int availableCyborgs) {
+        int enemies = totalNumberOfEnemiesWithArrivingFrom(source).apply(target);
+        int send = (enemies + 3 > availableCyborgs) ? availableCyborgs : enemies + 3;
+        System.out.println("MOVE " + source.id + " " + target.id + " " + send);
+    }
+
+    private static Optional<Factory> findIndangerFactory(Factory source) {
+        return map.myFactories().
+                filter(f -> (f.incomingEnemyCount - f.incomingFriendsCount) > f.numberOfCyborgs).
+                reduce((f1, f2) -> {
+                    int dist1 = distanceFrom(source).apply(f1);
+                    int dist2 = distanceFrom(source).apply(f2);
+                    if (dist1 > dist2) {
+                        return f2;
+                    } else if (dist1 < dist2) {
+                        return f1;
+                    } else {
+                        return f1.production > f2.production ? f1 : f2;
+                    }
+                });
+    }
+
+    private static void support(Factory source, Factory target, int availableCyborgs) {
+        int enemies = target.incomingEnemyCount - target.incomingFriendsCount;
+        int send = (enemies - 1) > availableCyborgs ? availableCyborgs : (enemies - 1);
+        System.out.println("MOVE " + source.id + " " + target.id + " " + send);
+    }
 }
 
 class GameMap {
     private Map<Integer, Factory> factoryMap = new HashMap<Integer, Factory>();
-    int unCapturedCount;
-    int unCapturedProducingCount;
-
+    private int unCapturedProducingCount;
 
     void addLink(int f1, int f2, int dist) {
         Factory factory1 = getOrCreate(f1);
@@ -131,7 +168,7 @@ class GameMap {
         }
     }
 
-    private Stream<Factory> myFactories() {
+    Stream<Factory> myFactories() {
         return factoryMap.values().stream().filter(Factory::isConquered);
     }
 
@@ -140,11 +177,9 @@ class GameMap {
     }
 
     void calculateStatistics() {
-        unCapturedCount = 0;
         unCapturedProducingCount = 0;
         factoryMap.values().forEach(f -> {
             if (!f.isConquered()) {
-                unCapturedCount++;
                 if (f.production > 0) {
                     unCapturedProducingCount++;
                 }
