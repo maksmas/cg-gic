@@ -1,4 +1,5 @@
 import java.util.*;
+import java.util.function.BinaryOperator;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -12,9 +13,23 @@ class Player {
         return f -> f.dists.get(sf);
     }
 
-    private static Function<Factory, Integer> totalNumberOfEnemiesWhenArrivedFrom(Factory sf) {
+    private static Function<Factory, Integer> totalNumberOfEnemiesWithArrivingFrom(Factory sf) {
         return f -> f.numberOfCyborgs + f.incomingEnemyCount +
                 (f.owner == -1 ? (f.production * (distanceFrom(sf).apply(f))) : 0);
+    }
+
+    private static BinaryOperator<Factory> bestTarget(Factory sourceFactory) {
+        return (f1, f2) -> {
+            //TODO capture enemy first
+            //TODO optimize
+
+            if (f1.production == f2.production) {
+                int f1Dist = distanceFrom(f1).apply(sourceFactory);
+                int f2Dist = distanceFrom(f2).apply(sourceFactory);
+                return f1Dist > f2Dist ? f2 : f1;
+            } else return f1.production > f2.production ? f1 : f2;
+
+        };
     }
 
     private static GameMap map;
@@ -47,8 +62,8 @@ class Player {
                 int arg5 = in.nextInt();
                 if ("FACTORY".equals(entityType)) {
                     map.addFactoryParams(entityId, arg1,arg2, arg3);
-                } else if ("TROOP".equals(entityType) && arg1 == -1) {
-                    map.addIncomingEnemies(arg3, arg4);
+                } else if ("TROOP".equals(entityType)) {
+                    map.addIncomingEnemies(arg3, arg4, arg1);
                 }
             }
             map.calculateStatistics();
@@ -58,17 +73,11 @@ class Player {
                 int availableCyborgs = sourceFactory.map(countAvailableCyborgs).get() - 1;
 
                 Optional<Factory> target = map.unCapturedFactories().
-                        filter(f -> totalNumberOfEnemiesWhenArrivedFrom(sourceFactory.get()).apply(f) < availableCyborgs).
-                        reduce((f1, f2) -> {
-                            //TODO capture enemy first
-                            //TODO optimize
-                            //TODO dont send repeatedly
-                            if (f1.production == f2.production) {
-                                int f1Dist = sourceFactory.map(distanceFrom(f1)).get();
-                                int f2Dist = sourceFactory.map(distanceFrom(f2)).get();
-                                return f1Dist > f2Dist ? f2 : f1;
-                            } else return f1.production > f2.production ? f1 : f2;
-                        });
+                        filter(f -> {
+                            int enemies = totalNumberOfEnemiesWithArrivingFrom(sourceFactory.get()).apply(f);
+                            int friends = f.incomingFriendsCount;
+                            return  enemies < availableCyborgs && enemies > friends;
+                        }).reduce(bestTarget(sourceFactory.get()));
                 if (target.isPresent()) {
                     System.out.println("MOVE " + sourceFactory.get().id + " " + target.get().id + " " + availableCyborgs);
                     continue;
@@ -99,16 +108,19 @@ class GameMap {
         factory.production = factoryProduction;
     }
 
-    void addIncomingEnemies(int factoryId, int num) {
+    void addIncomingEnemies(int factoryId, int num, int team) {
         Factory factory = factoryMap.get(factoryId);
-        factory.incomingEnemyCount += num;
+        if (team == -1) {
+            factory.incomingEnemyCount += num;
+        } else if (team == 1) {
+            factory.incomingFriendsCount += num;
+        }
     }
 
     void resetIncoming() {
         factoryMap.values().forEach(f -> f.incomingEnemyCount = 0);
     }
 
-    //experimental
     Stream<Factory> unCapturedFactories() {
         if (unCapturedProducingCount > 0) {
             return factoryMap.values().stream().filter(f -> !f.isConquered() && f.production > 0);
@@ -165,6 +177,7 @@ class Factory {
     int production;
     int numberOfCyborgs;
     int incomingEnemyCount = 0;
+    int incomingFriendsCount = 0;
     int owner;
     boolean isConquered() {
         return owner == 1;
