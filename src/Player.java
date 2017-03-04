@@ -6,9 +6,9 @@ import java.util.stream.Stream;
 
 //TODO Add enemy bomb tracking
 //TODO send bombs
-//TODO production...
+//TODO optimize production...
 class Player {
-    private static Function<Factory, Integer> countAvailableCyborgs = f -> f.numberOfCyborgs - f.incomingEnemyCount;
+    static Function<Factory, Integer> countAvailableCyborgs = f -> f.numberOfCyborgs - f.incomingEnemyCount;
 
     private static Function<Factory, Integer> distanceFrom(Factory sf) {
         return f -> f.dists.get(sf);
@@ -47,6 +47,7 @@ class Player {
             map.addLink(factory1, factory2, distance);
         }
 
+        //noinspection InfiniteLoopStatement
         while (true) {
             map.resetIncoming();
             int entityCount = in.nextInt();
@@ -69,14 +70,20 @@ class Player {
             StringBuilder command = new StringBuilder("");
 
             map.myFactories().filter(f -> countAvailableCyborgs.apply(f) > 0).forEach(sourceFactory -> {
-                int availableCyborgs = countAvailableCyborgs.apply(sourceFactory);
-                Optional<Factory> target = seekTarget(sourceFactory, availableCyborgs);
+                int availableCyborgs = sourceFactory.availableDrones;
 
-                if (target.isPresent()) {
-                    appendCommand(command, attack(sourceFactory, target.get(), availableCyborgs));
-                } else if (availableCyborgs > 0) {
-                    Optional<Factory> inDangerFactory = findIndangerFactory(sourceFactory);
-                    inDangerFactory.ifPresent(factory -> appendCommand(command, support(sourceFactory, factory, availableCyborgs)));
+                if (availableCyborgs > 15 && sourceFactory.turnNumWithAvailableDrones >= 10 && sourceFactory.production < 3) {
+                    appendCommand(command, "INC " + sourceFactory.id);
+                    sourceFactory.turnNumWithAvailableDrones = 0;
+                } else {
+                    Optional<Factory> target = seekTarget(sourceFactory, availableCyborgs);
+
+                    if (target.isPresent()) {
+                        appendCommand(command, attack(sourceFactory, target.get(), availableCyborgs));
+                    } else if (availableCyborgs > 0) {
+                        Optional<Factory> inDangerFactory = findIndangerFactory(sourceFactory);
+                        inDangerFactory.ifPresent(factory -> appendCommand(command, support(sourceFactory, factory, availableCyborgs)));
+                    }
                 }
             });
             System.out.println(command.length() == 0 ? "WAIT" : command.toString());
@@ -159,6 +166,7 @@ class GameMap {
         factoryMap.values().forEach(f -> {
                     f.incomingEnemyCount = 0;
                     f.incomingFriendsCount = 0;
+                    f.availableDrones = 0;
                 }
         );
     }
@@ -175,16 +183,20 @@ class GameMap {
         return factoryMap.values().stream().filter(Factory::isConquered);
     }
 
-    Optional<Factory> getBestCandidateForSource() {
-        return myFactories().reduce((f1,f2) -> f1.numberOfCyborgs - f1.incomingEnemyCount > f2.numberOfCyborgs - f2.incomingEnemyCount ? f1 : f2);
-    }
-
     void calculateStatistics() {
         unCapturedProducingCount = 0;
         factoryMap.values().forEach(f -> {
             if (!f.isConquered()) {
+                f.turnNumWithAvailableDrones = 0;
                 if (f.production > 0) {
                     unCapturedProducingCount++;
+                }
+            } else {
+                f.availableDrones = Player.countAvailableCyborgs.apply(f);
+                if (f.availableDrones > 5) {
+                    f.turnNumWithAvailableDrones++;
+                } else {
+                    f.turnNumWithAvailableDrones = 0;
                 }
             }
         });
@@ -219,6 +231,9 @@ class Factory {
     int incomingEnemyCount = 0;
     int incomingFriendsCount = 0;
     int owner;
+    int availableDrones;
+    int turnNumWithAvailableDrones = 0;
+
     boolean isConquered() {
         return owner == 1;
     };
