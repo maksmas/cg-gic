@@ -7,7 +7,6 @@ import java.util.stream.Stream;
 //TODO Add enemy bomb tracking
 //TODO send bombs
 //TODO production...
-//TODO multitasking
 class Player {
     private static Function<Factory, Integer> countAvailableCyborgs = f -> f.numberOfCyborgs - f.incomingEnemyCount;
 
@@ -67,25 +66,28 @@ class Player {
             }
             map.calculateStatistics();
 
-            //TODO mb loop thru my factorys
-            Optional<Factory> sourceFactory = map.getBestCandidateForSource();
-            if (sourceFactory.isPresent()) {
-                int availableCyborgs = sourceFactory.map(countAvailableCyborgs).get();
-                Optional<Factory> target = seekTarget(sourceFactory.get(), availableCyborgs);
+            StringBuilder command = new StringBuilder("");
+
+            map.myFactories().filter(f -> countAvailableCyborgs.apply(f) > 0).forEach(sourceFactory -> {
+                int availableCyborgs = countAvailableCyborgs.apply(sourceFactory);
+                Optional<Factory> target = seekTarget(sourceFactory, availableCyborgs);
 
                 if (target.isPresent()) {
-                    attack(sourceFactory.get(), target.get(), availableCyborgs);
-                    continue;
+                    appendCommand(command, attack(sourceFactory, target.get(), availableCyborgs));
                 } else if (availableCyborgs > 0) {
-                    Optional<Factory> inDangerFactory = findIndangerFactory(sourceFactory.get());
-                    if (inDangerFactory.isPresent()) {
-                        support(sourceFactory.get(), inDangerFactory.get(), availableCyborgs);
-                        continue;
-                    }
+                    Optional<Factory> inDangerFactory = findIndangerFactory(sourceFactory);
+                    inDangerFactory.ifPresent(factory -> appendCommand(command, support(sourceFactory, factory, availableCyborgs)));
                 }
-            }
-            System.out.println("WAIT");
+            });
+            System.out.println(command.length() == 0 ? "WAIT" : command.toString());
         }
+    }
+
+    private static void appendCommand(StringBuilder command, String postfix) {
+        if (command.length() > 0) {
+            command.append(";");
+        }
+        command.append(postfix);
     }
 
     private static Optional<Factory> seekTarget(Factory sourceFactory, int availableCyborgs) {
@@ -97,10 +99,10 @@ class Player {
                 }).reduce(bestTarget(sourceFactory));
     }
 
-    private static void attack(Factory source, Factory target, int availableCyborgs) {
+    private static String attack(Factory source, Factory target, int availableCyborgs) {
         int enemies = totalNumberOfEnemiesWithArrivingFrom(source).apply(target);
         int send = (enemies + 3 > availableCyborgs) ? availableCyborgs : enemies + 3;
-        System.out.println("MOVE " + source.id + " " + target.id + " " + send);
+        return "MOVE " + source.id + " " + target.id + " " + send;
     }
 
     private static Optional<Factory> findIndangerFactory(Factory source) {
@@ -119,10 +121,10 @@ class Player {
                 });
     }
 
-    private static void support(Factory source, Factory target, int availableCyborgs) {
+    private static String support(Factory source, Factory target, int availableCyborgs) {
         int enemies = target.incomingEnemyCount - target.incomingFriendsCount;
         int send = (enemies - 1) > availableCyborgs ? availableCyborgs : (enemies - 1);
-        System.out.println("MOVE " + source.id + " " + target.id + " " + send);
+        return "MOVE " + source.id + " " + target.id + " " + send;
     }
 }
 
