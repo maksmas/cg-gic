@@ -4,9 +4,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-//TODO Add enemy bomb tracking
 //TODO send bombs
-//TODO optimize production...
 class Player {
     static Function<Factory, Integer> countAvailableCyborgs = f -> f.numberOfCyborgs - f.incomingEnemyCount;
 
@@ -72,7 +70,7 @@ class Player {
             map.myFactories().filter(f -> countAvailableCyborgs.apply(f) > 0).forEach(sourceFactory -> {
                 int availableCyborgs = sourceFactory.availableDrones;
 
-                if (availableCyborgs > 15 && sourceFactory.turnNumWithAvailableDrones >= 10 && sourceFactory.production < 3) {
+                if (availableCyborgs > 10 && sourceFactory.turnNumWithAvailableDrones > 7 && sourceFactory.production < 3) {
                     appendCommand(command, "INC " + sourceFactory.id);
                     sourceFactory.turnNumWithAvailableDrones = 0;
                 } else {
@@ -114,7 +112,7 @@ class Player {
 
     private static Optional<Factory> findIndangerFactory(Factory source) {
         return map.myFactories().
-                filter(f -> (f.incomingEnemyCount - f.incomingFriendsCount) > f.numberOfCyborgs).
+                filter(f -> f.production > 0 && (f.incomingEnemyCount - f.incomingFriendsCount) > f.numberOfCyborgs).
                 reduce((f1, f2) -> {
                     int dist1 = distanceFrom(source).apply(f1);
                     int dist2 = distanceFrom(source).apply(f2);
