@@ -4,11 +4,10 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-//TODO optimize boms
-//TODO dont send 2 in same place
-//TODO dont send bombs in factories with a lot of friendly cyborgs incoming
-//TODO increase bomb neccesary minimum
+//TODO detect locks (~>30 turns of inactivity)
 //TODO in lock case capture and develop unproducing factories
+//TODO in case of lock send cyborgs to closest factory to enemy
+//TODO dont send all cyborgs on first turn if factory prduction is 0
 class Player {
     static Function<Factory, Integer> countAvailableCyborgs = f -> f.numberOfCyborgs - f.incomingEnemyCount;
 
@@ -143,15 +142,16 @@ class Player {
     private static String bomb() {
         StringBuilder result = new StringBuilder("");
         map.unCapturedFactories().
-                filter(f -> f.owner == -1 && f.production > 0 && (f.numberOfCyborgs + f.incomingEnemyCount) > 20).
+                filter(f -> f.owner == -1 && f.myBombIn == 0 && f.production > 0 && f.incomingFriendsCount < 5 && (f.numberOfCyborgs + f.incomingEnemyCount) > 25).
                 reduce((f1, f2) -> (f1.numberOfCyborgs + f1.incomingEnemyCount) > (f2.numberOfCyborgs + f2.incomingEnemyCount) ? f1 : f2).
                 ifPresent(target -> target.dists.entrySet().stream().filter(e -> e.getKey().isConquered()).
-                        reduce((e1, e2) -> e1.getValue() > e2.getValue() ? e1 : e2).
+                        reduce((e1, e2) -> e1.getValue() > e2.getValue() ? e2 : e1).
                         ifPresent(source -> {
                             result.append("BOMB ");
                             result.append(source.getKey().id);
                             result.append(" ");
                             result.append(target.id);
+                            target.myBombIn = source.getValue();
                             bombCount--;
                         }));
         return result.toString();
@@ -190,6 +190,9 @@ class GameMap {
                     f.incomingEnemyCount = 0;
                     f.incomingFriendsCount = 0;
                     f.availableDrones = 0;
+                    if (f.myBombIn > 0) {
+                        f.myBombIn--;
+                    }
                 }
         );
     }
@@ -256,6 +259,7 @@ class Factory {
     int owner;
     int availableDrones;
     int turnNumWithAvailableDrones = 0;
+    int myBombIn = 0;
 
     boolean isConquered() {
         return owner == 1;
