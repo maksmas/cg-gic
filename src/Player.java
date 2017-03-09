@@ -4,7 +4,11 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-//TODO send bombs
+//TODO optimize boms
+//TODO dont send 2 in same place
+//TODO dont send bombs in factories with a lot of friendly cyborgs incoming
+//TODO increase bomb neccesary minimum
+//TODO in lock case capture and develop unproducing factories
 class Player {
     static Function<Factory, Integer> countAvailableCyborgs = f -> f.numberOfCyborgs - f.incomingEnemyCount;
 
@@ -66,6 +70,10 @@ class Player {
             map.calculateStatistics();
 
             StringBuilder command = new StringBuilder("");
+
+            if (bombCount > 0) {
+                appendCommand(command, bomb());
+            }
 
             map.myFactories().filter(f -> countAvailableCyborgs.apply(f) > 0).forEach(sourceFactory -> {
                 int availableCyborgs = sourceFactory.availableDrones;
@@ -130,6 +138,23 @@ class Player {
         int enemies = target.incomingEnemyCount - target.incomingFriendsCount;
         int send = (enemies - 1) > availableCyborgs ? availableCyborgs : (enemies - 1);
         return "MOVE " + source.id + " " + target.id + " " + send;
+    }
+
+    private static String bomb() {
+        StringBuilder result = new StringBuilder("");
+        map.unCapturedFactories().
+                filter(f -> f.owner == -1 && f.production > 0 && (f.numberOfCyborgs + f.incomingEnemyCount) > 20).
+                reduce((f1, f2) -> (f1.numberOfCyborgs + f1.incomingEnemyCount) > (f2.numberOfCyborgs + f2.incomingEnemyCount) ? f1 : f2).
+                ifPresent(target -> target.dists.entrySet().stream().filter(e -> e.getKey().isConquered()).
+                        reduce((e1, e2) -> e1.getValue() > e2.getValue() ? e1 : e2).
+                        ifPresent(source -> {
+                            result.append("BOMB ");
+                            result.append(source.getKey().id);
+                            result.append(" ");
+                            result.append(target.id);
+                            bombCount--;
+                        }));
+        return result.toString();
     }
 }
 
