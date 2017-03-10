@@ -1,13 +1,16 @@
-import java.util.*;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Scanner;
 import java.util.function.BinaryOperator;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 //TODO detect locks (~>30 turns of inactivity)
 //TODO in lock case capture and develop unproducing factories
 //TODO in case of lock send cyborgs to closest factory to enemy
 //TODO dont send all cyborgs on first turn if factory prduction is 0
+//TODO multiple actions for factory in one turn
 class Player {
     static Function<Factory, Integer> countAvailableCyborgs = f -> f.numberOfCyborgs - f.incomingEnemyCount;
 
@@ -16,8 +19,10 @@ class Player {
     }
 
     private static Function<Factory, Integer> totalNumberOfEnemiesWithArrivingFrom(Factory sf) {
-        return f -> f.numberOfCyborgs + f.incomingEnemyCount +
-                (f.owner == -1 ? (f.production * (distanceFrom(sf).apply(f))) : 0);
+    	return f -> {
+    		int producedEnemies = f.owner == -1 ? (f.production * (distanceFrom(sf).apply(f) + 1)) : 0;
+    		return f.numberOfCyborgs + f.incomingEnemyCount + producedEnemies;
+		};
     }
 
     private static BinaryOperator<Factory> bestTarget(Factory sourceFactory) {
@@ -74,10 +79,10 @@ class Player {
                 appendCommand(command, bomb());
             }
 
-            map.myFactories().filter(f -> countAvailableCyborgs.apply(f) > 0).forEach(sourceFactory -> {
+            map.myFactories().filter(f -> f.availableDrones > 0).forEach(sourceFactory -> {
                 int availableCyborgs = sourceFactory.availableDrones;
 
-                if (availableCyborgs > 10 && sourceFactory.turnNumWithAvailableDrones > 7 && sourceFactory.production < 3) {
+                if (availableCyborgs > 10 && sourceFactory.turnNumWithAvailableDrones > 5 && sourceFactory.production < 3) {
                     appendCommand(command, "INC " + sourceFactory.id);
                     sourceFactory.turnNumWithAvailableDrones = 0;
                 } else {
@@ -113,7 +118,8 @@ class Player {
 
     private static String attack(Factory source, Factory target, int availableCyborgs) {
         int enemies = totalNumberOfEnemiesWithArrivingFrom(source).apply(target);
-        int send = (enemies + 3 > availableCyborgs) ? availableCyborgs : enemies + 3;
+        int send = (enemies + 1 > availableCyborgs) ? availableCyborgs : enemies + 1;
+        target.incomingFriendsCount += send;
         return "MOVE " + source.id + " " + target.id + " " + send;
     }
 
@@ -136,6 +142,7 @@ class Player {
     private static String support(Factory source, Factory target, int availableCyborgs) {
         int enemies = target.incomingEnemyCount - target.incomingFriendsCount;
         int send = (enemies - 1) > availableCyborgs ? availableCyborgs : (enemies - 1);
+        target.incomingFriendsCount += send;
         return "MOVE " + source.id + " " + target.id + " " + send;
     }
 
@@ -227,17 +234,7 @@ class GameMap {
             }
         });
     }
-
-    void printMap() {
-        factoryMap.values().forEach(f -> {
-            System.err.println(f.id + ": ");
-            System.err.println(f.dists.keySet().stream().
-                    map(f2 -> "[" + f2.id + " " + f.dists.get(f2) + "]").
-                    collect(Collectors.toList()));
-            System.err.println();
-        });
-    }
-
+    
     private Factory getOrCreate(int factoryId) {
         if (factoryMap.containsKey(factoryId)) {
             return factoryMap.get(factoryId);
@@ -265,9 +262,4 @@ class Factory {
         return owner == 1;
     };
     Map<Factory, Integer> dists = new HashMap<Factory, Integer>();
-
-    @Override
-    public String toString() {
-        return id + "";
-    }
 }
